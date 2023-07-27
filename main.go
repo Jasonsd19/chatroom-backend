@@ -36,6 +36,8 @@ func setupHandlers() {
 
 	cr := chatsession.CreateChatroom()
 
+	http.Handle("/", http.FileServer(http.Dir("./dist")))
+
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		upgrader.CheckOrigin = func(r *http.Request) bool { return true }
 
