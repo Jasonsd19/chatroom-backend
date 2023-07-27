@@ -14,7 +14,7 @@ func main() {
 	setupHandlers()
 
 	log.Print("Starting server...")
-	err := http.ListenAndServe("localhost:3001", nil)
+	err := http.ListenAndServe(":3001", nil)
 	if errors.Is(err, http.ErrServerClosed) {
 		log.Println("Server has shutdown")
 	} else if err != nil {
