@@ -1,2 +1,2 @@
-release: cd front-end && npm run build && cd ..
+release: npm run build
 web: chatroom-backend
