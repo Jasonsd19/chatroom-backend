@@ -11,10 +11,15 @@ import (
 )
 
 func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	setupHandlers()
 
 	log.Print("Starting server...")
-	err := http.ListenAndServe(":3001", nil)
+	err := http.ListenAndServe(":"+port, nil)
 	if errors.Is(err, http.ErrServerClosed) {
 		log.Println("Server has shutdown")
 	} else if err != nil {
