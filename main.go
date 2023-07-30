@@ -10,15 +10,19 @@ import (
 	"github.com/jasonsd19/chatroom-backend/internal/chatsession"
 )
 
+type WebsocketHandler struct {
+	Chatroom *chatsession.Chatroom
+}
+
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	setupHandlers()
+	http.Handle("/ws", &WebsocketHandler{Chatroom: chatsession.CreateChatroom()})
 
-	log.Print("Starting server...")
+	log.Printf("Starting server on port %s...", port)
 	err := http.ListenAndServe(":"+port, nil)
 	if errors.Is(err, http.ErrServerClosed) {
 		log.Println("Server has shutdown")
@@ -28,24 +32,38 @@ func main() {
 	}
 }
 
-func setupHandlers() {
+func (wh *WebsocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !isValid(r, wh.Chatroom) {
+		http.Error(w, "Invalid username", 400)
+		return
+	}
+
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
 
-	cr := chatsession.CreateChatroom()
+	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
 
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		upgrader.CheckOrigin = func(r *http.Request) bool { return true }
+	username := r.URL.Query().Get("username")
 
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Println("Error - ", err)
-			return
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println("Error - ", err)
+		return
+	}
+
+	userClient := chatsession.CreateUserClient(username, wh.Chatroom, conn)
+	wh.Chatroom.Client <- userClient
+}
+
+func isValid(r *http.Request, cr *chatsession.Chatroom) bool {
+	if username := r.URL.Query().Get("username"); username != "" {
+		if len(username) >= 3 && len(username) <= 15 {
+			if _, exists := cr.Clients[username]; !exists {
+				return true
+			}
 		}
-
-		userClient := chatsession.CreateUserClient(cr, conn)
-		cr.Client <- userClient
-	})
+	}
+	return false
 }

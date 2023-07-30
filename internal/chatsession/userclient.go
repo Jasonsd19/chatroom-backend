@@ -9,13 +9,15 @@ import (
 
 const (
 	messageSizeLimit = 256
-	pongInterval     = 300 * time.Second
+	messageInterval  = 300 * time.Second
 )
 
 type UserClient struct {
+	Username   string
 	Chatroom   *Chatroom
 	Connection *websocket.Conn
 	Message    chan *UserMessage
+	ClientList chan *ClientList
 }
 
 type UserMessage struct {
@@ -23,10 +25,14 @@ type UserMessage struct {
 	Message  string `json:"message"`
 }
 
-func CreateUserClient(cr *Chatroom, conn *websocket.Conn) *UserClient {
+type ClientList struct {
+	Clients []string `json:"user_list"`
+}
+
+func CreateUserClient(username string, cr *Chatroom, conn *websocket.Conn) *UserClient {
 	// We could use a buffered channel for Message if we expect a large amount of traffic to the
-	// chatroom however in my use case it's unlikely we will ned that much throughput
-	uc := UserClient{Chatroom: cr, Connection: conn, Message: make(chan *UserMessage)}
+	// chatroom however in my use case it's unlikely we will need that much throughput
+	uc := UserClient{Username: username, Chatroom: cr, Connection: conn, Message: make(chan *UserMessage), ClientList: make(chan *ClientList)}
 
 	go uc.ReadMessage()
 	go uc.WriteMessage()
@@ -41,8 +47,7 @@ func (uc *UserClient) ReadMessage() {
 	}()
 
 	uc.Connection.SetReadLimit(messageSizeLimit)
-	uc.Connection.SetReadDeadline(time.Now().Add(pongInterval))
-	uc.Connection.SetPongHandler(func(string) error { uc.Connection.SetReadDeadline(time.Now().Add(pongInterval)); return nil })
+	uc.Connection.SetReadDeadline(time.Now().Add(messageInterval))
 
 	for {
 		var userMessage UserMessage
@@ -53,16 +58,31 @@ func (uc *UserClient) ReadMessage() {
 			}
 			return
 		}
+		uc.Connection.SetReadDeadline(time.Now().Add(messageInterval))
 		uc.Chatroom.Relay <- &userMessage
 	}
 }
 
 func (uc *UserClient) WriteMessage() {
-	for msg := range uc.Message {
-		err := uc.Connection.WriteJSON(msg)
-		if err != nil {
-			log.Println("Error -", err)
-			return
+	defer func() {
+		uc.Chatroom.Remove <- uc
+		uc.Connection.Close()
+	}()
+
+	for {
+		select {
+		case msg := <-uc.Message:
+			err := uc.Connection.WriteJSON(msg)
+			if err != nil {
+				log.Println("Error -", err)
+				return
+			}
+		case userList := <-uc.ClientList:
+			err := uc.Connection.WriteJSON(userList)
+			if err != nil {
+				log.Println("Error -", err)
+				return
+			}
 		}
 	}
 }
