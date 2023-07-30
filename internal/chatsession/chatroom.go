@@ -55,6 +55,7 @@ func (cr *Chatroom) SendUserList() {
 	index := 0
 	for k := range cr.Clients {
 		userList.Clients[index] = k
+		index += 1
 	}
 
 	for _, client := range cr.Clients {
